@@ -1,22 +1,4 @@
-"""
-QLD Cafes – Places API Starter
-
-Usage:
-  python app.py --subs path/to/suburbs.xlsx --out cafes.xlsx \
-      [--sheet Sheet1] [--suburb-col Suburb] [--keyword cafe]
-
-Requires:
-  - Python 3.10+
-  - pip install -r requirements.txt
-  - .env file with GOOGLE_API_KEY=...
-
-Outputs:
-  - Excel (or CSV) with cafes aggregated by suburb via Places Text Search + Details
-"""
-
-import argparse
 import os
-import sys
 import time
 import json
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,21 +10,7 @@ from dotenv import load_dotenv
 TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
-# ---- Helpers ----
-def load_suburbs(xlsx_path: str, sheet: Optional[str], suburb_col: Optional[str]) -> List[str]:
-    df = pd.read_excel(xlsx_path, sheet_name=sheet) if sheet else pd.read_excel(xlsx_path)
-    col = suburb_col if suburb_col and suburb_col in df.columns else df.columns[0]
-    subs = (
-        df[col]
-        .astype(str)
-        .map(lambda x: x.strip())
-        .replace({"": pd.NA})
-        .dropna()
-        .drop_duplicates()
-        .tolist()
-    )
-    return subs
-
+# ---- HTTP ----
 def http_get(url: str, params: Dict[str, Any]) -> Dict[str, Any]:
     for attempt in range(5):
         r = requests.get(url, params=params, timeout=30)
@@ -52,19 +20,14 @@ def http_get(url: str, params: Dict[str, Any]) -> Dict[str, Any]:
             if status in ("OK", "ZERO_RESULTS"):
                 return data
             if status == "INVALID_REQUEST":
-                time.sleep(1.5)
-                continue
+                time.sleep(1.5); continue
             if status in ("OVER_QUERY_LIMIT", "RESOURCE_EXHAUSTED"):
-                time.sleep(2 ** attempt)
-                continue
+                time.sleep(2 ** attempt); continue
             if status == "REQUEST_DENIED":
                 raise RuntimeError(f"Request denied: {data}")
             if status == "UNKNOWN_ERROR":
-                time.sleep(1.5)
-                continue
-        else:
-            time.sleep(1.5)
-            continue
+                time.sleep(1.5); continue
+        time.sleep(1.5)
     raise RuntimeError(f"Failed after retries. Last response: {r.status_code} {r.text[:200]}")
 
 def place_text_search(api_key: str, query: str, page_token: Optional[str] = None) -> Dict[str, Any]:
@@ -126,70 +89,54 @@ def merge_details(row: Dict[str, Any], details: Dict[str, Any]) -> Dict[str, Any
     })
     return row
 
-# ---- Runner ----
-def run(suburbs: List[str], api_key: str, keyword: str) -> pd.DataFrame:
+# ---- Public API ----
+def cafes_for_suburb(suburb: str, keyword: str = "cafe", max_leads: Optional[int] = None) -> pd.DataFrame:
+    """Return a DataFrame of cafes for the given suburb. Limit with max_leads."""
+    load_dotenv()
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY not set in environment or .env")
+
     rows: List[Dict[str, Any]] = []
-    for s in suburbs:
-        query = f"{keyword} {s} QLD"
-        page_token = None
-        pages = 0
-        while pages < 3:
-            data = place_text_search(api_key, query, page_token)
-            results = data.get("results", [])
-            for r in results:
-                rows.append(flatten_search_result(r) | {"query_suburb": s})
-            pages += 1
-            page_token = data.get("next_page_token")
-            if not page_token:
+    query = f"{keyword} {suburb} QLD"
+    page_token = None
+    pages = 0
+    while pages < 3:
+        data = place_text_search(api_key, query, page_token)
+        results = data.get("results", [])
+        for r in results:
+            rows.append(flatten_search_result(r) | {"query_suburb": suburb})
+            if max_leads is not None and len(rows) >= max_leads:
                 break
-            time.sleep(1.5)
+        if max_leads is not None and len(rows) >= max_leads:
+            break
+        pages += 1
+        page_token = data.get("next_page_token")
+        if not page_token:
+            break
+        time.sleep(1.5)
+
     df = pd.DataFrame(rows)
     if df.empty:
         return df
+
     df = df.drop_duplicates(subset=["place_id"])
+    if max_leads is not None:
+        df = df.head(max_leads)
+
     enriched_rows: List[Dict[str, Any]] = []
     for pid, row in df.set_index("place_id").to_dict(orient="index").items():
         d = place_details(api_key, pid)
         merged = merge_details(row, d)
         enriched_rows.append(merged)
+        if max_leads is not None and len(enriched_rows) >= max_leads:
+            break
         time.sleep(0.1)
+
     out = pd.DataFrame(enriched_rows)
     cols = [
         "place_id","name","formatted_address","suburb","state","postcode",
         "lat","lng","phone","website","rating","rating_count",
         "opening_hours_json","business_status","types_json","maps_url","query_suburb","source"
     ]
-    out = out.reindex(columns=cols)
-    return out
-
-# ---- Main ----
-def main():
-    parser = argparse.ArgumentParser(description="Extract cafes by suburb via Google Places Text Search + Details")
-    parser.add_argument("--subs", required=True, help="Path to Excel with suburbs")
-    parser.add_argument("--out", required=True, help="Output path (.xlsx or .csv)")
-    parser.add_argument("--sheet", help="Excel sheet name (optional)")
-    parser.add_argument("--suburb-col", help="Column name with suburbs (default: first column)")
-    parser.add_argument("--keyword", default="cafe", help="Search keyword, default 'cafe'")
-    args = parser.parse_args()
-
-    load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        print("ERROR: GOOGLE_API_KEY not set in environment or .env", file=sys.stderr)
-        sys.exit(1)
-
-    suburbs = load_suburbs(args.subs, args.sheet, args.suburb_col)
-    if not suburbs:
-        print("No suburbs loaded. Check your Excel and column name.", file=sys.stderr)
-        sys.exit(1)
-
-    df = run(suburbs, api_key, args.keyword)
-
-    if args.out.lower().endswith(".csv"):
-        df.to_csv(args.out, index=False)
-    else:
-        df.to_excel(args.out, index=False)
-    print(f"Wrote {len(df):,} rows -> {args.out}")
-
-if __name__ == "__main__":
-    main()
+    return out.reindex(columns=cols)
