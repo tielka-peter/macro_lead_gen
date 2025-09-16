@@ -9,8 +9,13 @@ import macro_lead_gen as mg
 
 st.title("Macro Lead Gen")
 
-# password since it's a public app
+
+
 password = st.text_input("Enter Password")
+
+if password:
+    st.session_state.clear()
+
 if password == "T13lka":
     st.session_state.clear()
     
@@ -25,7 +30,6 @@ if password == "T13lka":
         st.download_button("Download Leads as CSV", df.to_csv(index=False), "leads.csv", "text/csv")
         
         df
-
 
 
 

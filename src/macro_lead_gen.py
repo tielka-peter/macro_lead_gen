@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+import streamlit as st
 
 TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -93,9 +94,16 @@ def merge_details(row: Dict[str, Any], details: Dict[str, Any]) -> Dict[str, Any
 def cafes_for_suburb(suburb: str, keyword: str = "cafe", max_leads: Optional[int] = None) -> pd.DataFrame:
     """Return a DataFrame of cafes for the given suburb. Limit with max_leads."""
     load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY")
+
+    # try Streamlit secrets first, then .env
+    api_key = None
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
     if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY not set in environment or .env")
+        api_key = os.getenv("GOOGLE_API_KEY")
+
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY not set in st.secrets or .env")
 
     rows: List[Dict[str, Any]] = []
     query = f"{keyword} {suburb} QLD"
