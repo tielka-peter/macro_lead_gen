@@ -10,12 +10,7 @@ import macro_lead_gen as mg
 st.title("Macro Lead Gen")
 
 
-
 password = st.text_input("Enter Password")
-
-if password:
-    st.session_state.clear()
-
 if password == "T13lka":
     st.session_state.clear()
     
