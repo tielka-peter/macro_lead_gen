@@ -2,7 +2,7 @@
 import os
 import time
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Literal
 
 import pandas as pd
 import requests
@@ -176,27 +176,31 @@ def _geocode_area(api_key: str, area_text: str) -> Optional[str]:
 # ---- Public API ----
 def cafes_for_suburb(
     suburb: str,
-    state: Optional[str] = None,          # e.g., "VIC", "New South Wales", etc.
+    state: Optional[str] = None,          # e.g., "VIC", "New South Wales"
     keyword: str = "cafe",
     descriptor: str = "",
-    max_leads: Optional[int] = None
+    max_leads: Optional[int] = None,
+    return_format: str = "raw"
 ) -> pd.DataFrame:
-    """Return Capsule-formatted DataFrame for cafes near the given suburb."""
+    """Return raw Places DataFrame (rating, rating_count, opening_hours) or Capsule-formatted."""
+    if return_format not in ("raw", "capsule"):
+        raise ValueError("return_format must be 'raw' or 'capsule'")
+    
     load_dotenv()
 
-    # prefer Streamlit secrets, then env
     api_key = st.secrets.get("GOOGLE_API_KEY") if hasattr(st, "secrets") else None
     if not api_key:
         api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("GOOGLE_API_KEY not set in st.secrets or .env")
 
-    # Build area text and get a lat/lng bias
     area_text = f"{suburb} {state}" if state else suburb
     location_bias = _geocode_area(api_key, area_text)
 
-    # Human-friendly text query without hardcoded QLD
-    text_query = f"{descriptor} {keyword} in {suburb}".strip() if not state else f"{descriptor} {keyword} in {suburb} {state}".strip()
+    text_query = (
+        f"{descriptor} {keyword} in {suburb} {state}".strip()
+        if state else f"{descriptor} {keyword} in {suburb}".strip()
+    )
 
     rows: List[Dict[str, Any]] = []
     page_token = None
@@ -206,9 +210,9 @@ def cafes_for_suburb(
             api_key,
             text_query,
             page_token=page_token,
-            location=location_bias,   # bias near suburb
-            radius=3000,              # 3km radius bias
-            region="au"               # Australia bias
+            location=location_bias,
+            radius=3000,
+            region="au"
         )
         results = data.get("results", [])
         for r in results:
@@ -225,9 +229,12 @@ def cafes_for_suburb(
 
     df = pd.DataFrame(rows)
     if df.empty:
-        return pd.DataFrame(columns=TEMPLATE_COLS)
+        return pd.DataFrame(columns=[
+            "place_id","name","formatted_address","lat","lng",
+            "rating","rating_count","opening_hours_json","phone","website",
+            "business_status","maps_url","suburb","state","postcode","types_json","query_suburb"
+        ])
 
-    # Rank by popularity before trimming
     df = df.drop_duplicates(subset=["place_id"]).sort_values(
         ["rating_count", "rating"], ascending=[False, False]
     )
@@ -246,5 +253,15 @@ def cafes_for_suburb(
 
     enriched = pd.DataFrame(enriched_rows)
 
-    # Final shape
+    # Raw view with extra fields for pandas filtering
+    if return_format == "raw":
+        cols = [
+            "place_id","name","formatted_address","lat","lng",
+            "rating","rating_count","opening_hours_json","phone","website",
+            "business_status","maps_url","suburb","state","postcode","types_json","query_suburb"
+        ]
+        # keep existing plus any unexpected extras
+        return enriched[[c for c in cols if c in enriched.columns]].copy()
+
+    # Capsule template view
     return to_capsule_template(enriched)
