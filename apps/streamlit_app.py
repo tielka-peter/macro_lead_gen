@@ -11,7 +11,8 @@ import pandas as pd
 st.title("Macro Lead Gen")
 
 suburb = st.text_input("Enter Suburb")
-state = st.text_input("Enter State, e.g. VIC (Optional)").strip().upper()
+state = st.text_input("Enter State (optional) e.g. VIC").strip().upper()
+descriptor = st.text_input("Enter Descriptor (optional) e.g. 'fancy', 'affluent', 'bakery' ect.").strip()
 num_leads = int(st.number_input("Number of Leads", min_value=1, max_value=60))
 
 if st.button("Search"):
@@ -20,8 +21,11 @@ if st.button("Search"):
         kwargs = {"suburb": suburb, "max_leads": num_leads}
         if state:
             kwargs["state"] = state
+        if descriptor:
+            kwargs["descriptor"] = descriptor
         
-        df = mg.cafes_for_suburb(**kwargs)
+        df = mg.cafes_for_suburb(**kwargs) 
+    
         st.download_button("Download Leads as CSV", df.to_csv(index=False), "leads.csv", "text/csv")
         df
     else:

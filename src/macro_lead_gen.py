@@ -178,6 +178,7 @@ def cafes_for_suburb(
     suburb: str,
     state: Optional[str] = None,          # e.g., "VIC", "New South Wales", etc.
     keyword: str = "cafe",
+    descriptor: str = "",
     max_leads: Optional[int] = None
 ) -> pd.DataFrame:
     """Return Capsule-formatted DataFrame for cafes near the given suburb."""
@@ -195,7 +196,7 @@ def cafes_for_suburb(
     location_bias = _geocode_area(api_key, area_text)
 
     # Human-friendly text query without hardcoded QLD
-    text_query = f"{keyword} in {suburb}" if not state else f"{keyword} in {suburb} {state}"
+    text_query = f"{descriptor} {keyword} in {suburb}".strip() if not state else f"{descriptor} {keyword} in {suburb} {state}".strip()
 
     rows: List[Dict[str, Any]] = []
     page_token = None
