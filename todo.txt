@@ -1,3 +1,4 @@
-set up query to take only fancy cafes
 filter by ratings
 allow changes to the dataframe, decide what data I want (e.g. lets say I want to have the ratings in the csv), or download a csv that doesn't contain the ratings
+
+next time claling mama, let here know about what earning rate I should put in for xero

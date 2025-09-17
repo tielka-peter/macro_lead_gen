@@ -76,7 +76,7 @@ def flatten_search_result(r: Dict[str, Any]) -> Dict[str, Any]:
     geom = (r.get("geometry") or {}).get("location") or {}
     return {
         "place_id": r.get("place_id"),
-        "name": r.get("name"),
+        "place_name": r.get("name"),
         "formatted_address": r.get("formatted_address"),
         "lat": geom.get("lat"),
         "lng": geom.get("lng"),
@@ -146,7 +146,7 @@ def _state_unabbreviator(state) -> str:
 
 def to_capsule_template(df: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame({
-        "Organization": df["name"],
+        "Organization": df["place_name"],
         "Phone": df.get("phone"),
         "Email": "",  # Places does not provide emails
         "Website": df.get("website"),
@@ -230,7 +230,7 @@ def cafes_for_suburb(
     df = pd.DataFrame(rows)
     if df.empty:
         return pd.DataFrame(columns=[
-            "place_id","name","formatted_address","lat","lng",
+            "place_id","place_name","formatted_address","lat","lng",
             "rating","rating_count","opening_hours_json","phone","website",
             "business_status","maps_url","suburb","state","postcode","types_json","query_suburb"
         ])
@@ -256,7 +256,7 @@ def cafes_for_suburb(
     # Raw view with extra fields for pandas filtering
     if return_format == "raw":
         cols = [
-            "place_id","name","formatted_address","lat","lng",
+            "place_id","place_name","formatted_address","lat","lng",
             "rating","rating_count","opening_hours_json","phone","website",
             "business_status","maps_url","suburb","state","postcode","types_json","query_suburb"
         ]
