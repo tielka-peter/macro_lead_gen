@@ -246,6 +246,7 @@ def cafes_for_suburb(
     for pid, row in df.set_index("place_id").to_dict(orient="index").items():
         d = place_details(api_key, pid)
         merged = merge_details(row, d)
+        merged["place_id"] = pid
         enriched_rows.append(merged)
         if max_leads is not None and len(enriched_rows) >= max_leads:
             break
